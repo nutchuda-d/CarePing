@@ -215,6 +215,122 @@
         "wires": []
     },
     {
+        "id": "cp_comment_test",
+        "type": "comment",
+        "z": "cp_tab_main",
+        "name": "Tests \u2014 click the square on the left of each node",
+        "info": "Test 1 sends straight to the web console (no MQTT needed).\nTests 2 and 3 publish to Mosquitto exactly like a real button, so they also check the MQTT connection.",
+        "x": 240,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "cp_t1",
+        "type": "inject",
+        "z": "cp_tab_main",
+        "name": "Test 1: Help from Bed 3 (direct to web)",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "headers",
+                "v": "{\"Content-Type\":\"application/json\"}",
+                "vt": "json"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{\"topic\":\"careping/CP-21B9/request\",\"payload\":{\"device\":\"CP-21B9\",\"type\":\"help\"}}",
+        "payloadType": "json",
+        "x": 230,
+        "y": 500,
+        "wires": [
+            [
+                "cp_to_web"
+            ]
+        ]
+    },
+    {
+        "id": "cp_t2",
+        "type": "inject",
+        "z": "cp_tab_main",
+        "name": "Test 2: Water from Bed 12 (via MQTT)",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "careping/CP-7F3A/request",
+        "payload": "{\"type\":\"water\"}",
+        "payloadType": "json",
+        "x": 230,
+        "y": 560,
+        "wires": [
+            [
+                "cp_t_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "cp_t3",
+        "type": "inject",
+        "z": "cp_tab_main",
+        "name": "Test 3: Bed 9 button back online (via MQTT)",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "careping/CP-55E2/status",
+        "payload": "{\"status\":\"online\"}",
+        "payloadType": "json",
+        "x": 250,
+        "y": 620,
+        "wires": [
+            [
+                "cp_t_mqtt_out"
+            ]
+        ]
+    },
+    {
+        "id": "cp_t_mqtt_out",
+        "type": "mqtt out",
+        "z": "cp_tab_main",
+        "name": "Publish like a button",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "feab8d0f77cb83b4",
+        "x": 540,
+        "y": 590,
+        "wires": []
+    },
+    {
         "id": "feab8d0f77cb83b4",
         "type": "mqtt-broker",
         "name": "Mosquitto",
