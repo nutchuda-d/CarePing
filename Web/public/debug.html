@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MQTT Live Stream</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; background: #f4f4f9; }
+    h2 { color: #333; }
+    table { width: 100%; border-collapse: collapse; background: #fff; margin-top: 10px; }
+    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+    th { background: #007bff; color: white; }
+    tr:nth-child(even) { background: #f9f9f9; }
+  </style>
+</head>
+<body>
+
+  <h2>MQTT Data Stream (`python/mqtt`)</h2>
+  
+  <table>
+    <thead>
+      <tr>
+        <th>Topic</th>
+        <th>Payload</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody id="data-table"></tbody>
+  </table>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const tableBody = document.getElementById('data-table');
+
+    function prependRow(data) {
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${data.topic}</td>
+        <td>${data.payload}</td>
+        <td>${new Date(data.timestamp || data.created_at).toLocaleString()}</td>
+      `;
+      tableBody.insertBefore(row, tableBody.firstChild);
+    }
+
+    // Load existing history on page load
+    fetch('/api/history')
+      .then(res => res.json())
+      .then(history => {
+        history.forEach(item => prependRow(item));
+      });
+
+    // Listen for live updates via WebSockets
+    socket.on('mqtt_message', (data) => {
+      prependRow(data);
+    });
+  </script>
+
+</body>
+</html>

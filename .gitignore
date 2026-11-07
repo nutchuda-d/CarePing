@@ -1,0 +1,21 @@
+# Node packages — recreate with: cd Web && npm install
+node_modules/
+npm-debug.log*
+
+# Local database (test messages from Node-RED)
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IntelliJ / OS
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit tokens or passwords
+.env

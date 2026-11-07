@@ -1,0 +1,248 @@
+[
+    {
+        "id": "cp_tab_main",
+        "type": "tab",
+        "label": "CarePing",
+        "disabled": false,
+        "info": "Bedside buttons \u2192 CarePing web console, and caregiver acknowledgements back to the buttons.\n\nButton topics:\n- careping/<CODE>/request  {\"type\":\"help|pain|water|toilet\"}\n- careping/<CODE>/status   {\"status\":\"online|offline\"}\n- careping/<CODE>/ack      (sent to the button) {\"state\":\"otw|done|waiting\",\"by\":\"Nurse Noon\"}",
+        "env": []
+    },
+    {
+        "id": "cp_comment_in",
+        "type": "comment",
+        "z": "cp_tab_main",
+        "name": "Button \u2192 web console",
+        "info": "",
+        "x": 160,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "cp_mqtt_in",
+        "type": "mqtt in",
+        "z": "cp_tab_main",
+        "name": "Button messages",
+        "topic": "careping/+/+",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "feab8d0f77cb83b4",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 160,
+        "y": 120,
+        "wires": [
+            [
+                "cp_parse"
+            ]
+        ]
+    },
+    {
+        "id": "cp_parse",
+        "type": "function",
+        "z": "cp_tab_main",
+        "name": "Parse CarePing message",
+        "func": "// Turns a raw button message into what the web console expects.\n// Topics: careping/<CODE>/request  payload {\"type\":\"water\"}  (or just: water)\n//         careping/<CODE>/status   payload {\"status\":\"online\"} (or: online / offline)\nconst parts = String(msg.topic || '').split('/');\nif (parts.length !== 3 || parts[0] !== 'careping') return null;\nconst device = parts[1].toUpperCase();\nconst kind = parts[2];\nif (!/^CP-[0-9A-Z]{4}$/.test(device)) return null;\n\nlet data = msg.payload;\nif (Buffer.isBuffer(data)) data = data.toString();\nif (typeof data === 'string') {\n    try { data = JSON.parse(data); } catch (e) { data = { value: data.trim() }; }\n}\nif (!data || typeof data !== 'object') data = { value: String(data) };\n\nlet out;\nif (kind === 'request') {\n    const type = String(data.type || data.value || '').toLowerCase();\n    if (!['help', 'pain', 'water', 'toilet'].includes(type)) {\n        node.warn(`Ignored unknown request type \"${type}\" from ${device}`);\n        return null;\n    }\n    out = { device, type };\n    node.status({ fill: type === 'help' ? 'red' : 'blue', shape: 'dot', text: `${device}: ${type}` });\n} else if (kind === 'status') {\n    const status = String(data.status || data.value || 'online').toLowerCase() === 'offline' ? 'offline' : 'online';\n    out = { device, status };\n} else {\n    return null;   // e.g. our own careping/<code>/ack messages\n}\n\nmsg.headers = { 'Content-Type': 'application/json' };\nmsg.payload = { topic: msg.topic, payload: out, timestamp: new Date().toISOString() };\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 120,
+        "wires": [
+            [
+                "cp_to_web",
+                "cp_debug_in"
+            ]
+        ]
+    },
+    {
+        "id": "cp_to_web",
+        "type": "http request",
+        "z": "cp_tab_main",
+        "name": "Send to web console",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://host.docker.internal:3000/api/mqtt-data",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 660,
+        "y": 120,
+        "wires": [
+            [
+                "cp_debug_web"
+            ]
+        ]
+    },
+    {
+        "id": "cp_debug_in",
+        "type": "debug",
+        "z": "cp_tab_main",
+        "name": "Incoming",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 630,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "cp_debug_web",
+        "type": "debug",
+        "z": "cp_tab_main",
+        "name": "Web server reply",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": true,
+        "complete": "statusCode",
+        "targetType": "msg",
+        "statusVal": "statusCode",
+        "statusType": "msg",
+        "x": 890,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "cp_comment_ack",
+        "type": "comment",
+        "z": "cp_tab_main",
+        "name": "Web console \u2192 button (acknowledgements)",
+        "info": "",
+        "x": 220,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "cp_ack_in",
+        "type": "http in",
+        "z": "cp_tab_main",
+        "name": "Ack from web console",
+        "url": "/careping/ack",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 180,
+        "y": 320,
+        "wires": [
+            [
+                "cp_ack_build"
+            ]
+        ]
+    },
+    {
+        "id": "cp_ack_build",
+        "type": "function",
+        "z": "cp_tab_main",
+        "name": "Build ack for button",
+        "func": "// The web console says a caregiver accepted / finished / reassigned a request.\n// Output 1 \u2192 MQTT to the button (careping/<CODE>/ack)   Output 2 \u2192 HTTP reply to the web server\nconst body = msg.payload || {};\nconst device = String(body.device || '').toUpperCase();\nconst state = String(body.state || '');\nif (!/^CP-[0-9A-Z]{4}$/.test(device) || !['waiting', 'otw', 'done'].includes(state)) {\n    msg.statusCode = 400;\n    msg.payload = { error: 'Need device (CP-XXXX) and state (waiting | otw | done)' };\n    return [null, msg];\n}\nconst ack = {\n    topic: `careping/${device}/ack`,\n    payload: JSON.stringify({ state, type: body.type || null, by: body.by || null, at: new Date().toISOString() }),\n    qos: 1,\n    retain: false\n};\nnode.status({ fill: state === 'done' ? 'green' : 'blue', shape: 'dot', text: `${device}: ${state}` });\nmsg.statusCode = 200;\nmsg.payload = { status: 'sent' };\nreturn [ack, msg];\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 320,
+        "wires": [
+            [
+                "cp_mqtt_out",
+                "cp_debug_ack"
+            ],
+            [
+                "cp_http_resp"
+            ]
+        ]
+    },
+    {
+        "id": "cp_mqtt_out",
+        "type": "mqtt out",
+        "z": "cp_tab_main",
+        "name": "Ack to button",
+        "topic": "",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "feab8d0f77cb83b4",
+        "x": 660,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "cp_debug_ack",
+        "type": "debug",
+        "z": "cp_tab_main",
+        "name": "Acks sent",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 650,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "cp_http_resp",
+        "type": "http response",
+        "z": "cp_tab_main",
+        "name": "Reply to web server",
+        "statusCode": "",
+        "headers": {},
+        "x": 680,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "feab8d0f77cb83b4",
+        "type": "mqtt-broker",
+        "name": "Mosquitto",
+        "broker": "host.docker.internal",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]

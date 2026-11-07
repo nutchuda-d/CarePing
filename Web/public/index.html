@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CarePing · Caregiver console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Apply the saved theme before the page paints, so it never flashes the wrong colours.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('careping-theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+</head>
+<body>
+<div class="app">
+
+  <!-- ───────────── Sidebar ───────────── -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark"><i data-icon="radio" data-size="20"></i></div>
+      <div>
+        <div class="logo-name">CarePing</div>
+        <div class="logo-tag">Caregiver console</div>
+      </div>
+    </div>
+
+    <div class="menu-label">MENU</div>
+    <nav class="nav" aria-label="Main">
+      <a href="#ping" class="nav-item" data-view="ping">
+        <i data-icon="bell"></i><span class="nav-label">Ping</span>
+        <span class="nav-badge" id="navBadge" hidden>0</span>
+      </a>
+      <a href="#log" class="nav-item" data-view="log">
+        <i data-icon="list"></i><span class="nav-label">Log</span>
+      </a>
+      <a href="#devices" class="nav-item" data-view="devices">
+        <i data-icon="device"></i><span class="nav-label">Devices</span>
+      </a>
+    </nav>
+
+    <button class="nav-item theme-toggle" id="themeBtn" type="button" aria-pressed="false">
+      <i data-icon="moon"></i><span class="nav-label">Dark mode</span>
+    </button>
+
+    <div class="on-duty">
+      <div class="avatar">NN</div>
+      <div>
+        <div class="who-name">Nurse Noon</div>
+        <div class="who-status"><span class="dot dot-success"></span>Ward A · On duty</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ───────────── Ping (live requests) ───────────── -->
+    <section class="view" id="view-ping" aria-labelledby="pingTitle">
+      <header class="page-header">
+        <div>
+          <h1 id="pingTitle">Live pings</h1>
+          <p class="subtitle" id="clock">Ward A</p>
+        </div>
+        <div class="header-actions">
+          <span class="pill pill-success" id="livePill"><span class="dot"></span><span id="livePillText">Live</span></span>
+          <button class="btn btn-secondary btn-sm" id="soundBtn" aria-pressed="true">
+            <i data-icon="volume" data-size="16"></i><span>Sound on</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="banner" id="pingBanner" hidden>
+        <i data-icon="wifioff"></i>
+        <span class="banner-text"></span>
+        <a href="#devices" class="banner-link">View devices →</a>
+      </div>
+
+      <div class="stats" id="pingStats"></div>
+
+      <div class="section-head">
+        <h2>Active requests</h2>
+        <span class="hint">Most urgent first, then longest wait</span>
+      </div>
+
+      <div class="grid" id="pingGrid" aria-live="polite"></div>
+      <div class="empty" id="pingEmpty" hidden></div>
+
+      <nav class="category-bar" id="categoryBar" aria-label="Filter requests by type"></nav>
+    </section>
+
+    <!-- ───────────── Log ───────────── -->
+    <section class="view" id="view-log" aria-labelledby="logTitle" hidden>
+      <header class="page-header">
+        <div>
+          <h1 id="logTitle">Request log</h1>
+          <p class="subtitle">Every ping, who answered it, and how fast</p>
+        </div>
+        <button class="btn btn-secondary" id="exportBtn"><i data-icon="download" data-size="18"></i>Export CSV</button>
+      </header>
+
+      <div class="stats" id="logStats"></div>
+
+      <div class="filters">
+        <span class="btn btn-secondary btn-sm static"><i data-icon="clock" data-size="16"></i>Today</span>
+        <span class="divider" aria-hidden="true"></span>
+        <div class="chip-group" id="logTypeFilters" role="group" aria-label="Request type"></div>
+        <div class="spacer"></div>
+        <label class="search">
+          <i data-icon="search" data-size="16"></i>
+          <input id="logSearch" type="search" placeholder="Search patient or bed" aria-label="Search patient or bed">
+        </label>
+      </div>
+
+      <div class="glass table-card">
+        <div class="table-scroll">
+          <table class="table">
+            <thead>
+              <tr><th>Time</th><th>Patient</th><th>Bed</th><th>Request</th><th>Status</th><th>Answered by</th><th>Response time</th></tr>
+            </thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span id="logCount"></span>
+          <div class="pager">
+            <button class="btn btn-secondary btn-sm" id="prevPage">Previous</button>
+            <button class="btn btn-secondary btn-sm" id="nextPage">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────────── Devices ───────────── -->
+    <section class="view" id="view-devices" aria-labelledby="devTitle" hidden>
+      <header class="page-header">
+        <div>
+          <h1 id="devTitle">Devices</h1>
+          <p class="subtitle">Link each bedside button to a patient and bed</p>
+        </div>
+        <div class="header-actions">
+          <span class="pill pill-success" id="devOnline"><span class="dot"></span><span></span></span>
+          <span class="pill pill-danger" id="devOffline"><span class="dot"></span><span></span></span>
+        </div>
+      </header>
+
+      <div class="banner" id="devBanner" hidden>
+        <i data-icon="wifioff"></i>
+        <span class="banner-text"></span>
+      </div>
+
+      <div class="devices-layout">
+        <form class="glass form-card" id="linkForm" novalidate>
+          <div class="form-title">
+            <span class="icon-tile small"><i data-icon="plus" data-size="18"></i></span>
+            <h2>Link a new button</h2>
+          </div>
+          <p class="help">Find the code on the sticker under the button, e.g. CP-7F3A.</p>
+
+          <div class="field">
+            <label for="fCode">Device code</label>
+            <div class="input input-code">
+              <input id="fCode" placeholder="CP-____" autocomplete="off" maxlength="7" spellcheck="false">
+              <i data-icon="tag" data-size="18"></i>
+            </div>
+            <small class="field-hint" id="codeHint" hidden></small>
+          </div>
+
+          <div class="field">
+            <label for="fPatient">Patient</label>
+            <div class="input">
+              <input id="fPatient" list="patientList" placeholder="Choose or type a name" autocomplete="off">
+              <i data-icon="chevron" data-size="18"></i>
+            </div>
+            <datalist id="patientList"></datalist>
+          </div>
+
+          <div class="field">
+            <label for="fBed">Bed / room</label>
+            <div class="input">
+              <input id="fBed" placeholder="e.g. Bed 12, Ward A" autocomplete="off">
+            </div>
+          </div>
+
+          <button class="btn btn-block" type="submit"><i data-icon="plus" data-size="18"></i>Link device</button>
+          <p class="footnote">After linking, press the button once to send a test ping.</p>
+        </form>
+
+        <div class="glass table-card">
+          <div class="table-title">
+            <h2>Linked buttons</h2>
+            <span class="hint" id="devCount"></span>
+          </div>
+          <div class="table-scroll">
+            <table class="table">
+              <thead>
+                <tr><th>Code</th><th>Patient</th><th>Bed</th><th>Status</th><th>Last signal</th><th><span class="sr-only">Action</span></th></tr>
+              </thead>
+              <tbody id="devBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Served by server.js when you run `node server.js`. Missing when the file is opened directly — the page then runs in demo mode. -->
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
