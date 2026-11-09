@@ -1,0 +1,6 @@
+{
+  "name": "@careping/simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ปุ่มจำลองบนเว็บ เสิร์ฟโดย backend ที่ /simulator/"
+}

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CarePing · ปุ่มจำลอง</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2433; --muted:#6b7385; --line:#e3e6ec; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Noto Sans Thai", sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width: 920px; margin: 0 auto; padding: 24px; display:grid; grid-template-columns: 1fr 320px; gap: 20px; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 16px; padding: 20px; }
+  .device { display:flex; flex-direction:column; align-items:center; gap: 18px; }
+  .led { width: 64px; height: 64px; border-radius: 50%; background:#cfd3db; box-shadow: inset 0 -4px 8px rgba(0,0,0,.15); transition: background .2s; }
+  .led.blink { animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  .ledlabel { font-weight: 600; }
+  .buttons { display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px; width:100%; }
+  .btn { border:none; border-radius: 18px; padding: 22px 12px; font-size: 18px; font-weight: 600; cursor:pointer; color:#fff; position:relative; overflow:hidden; user-select:none; }
+  .btn small { display:block; font-weight: 400; font-size: 12px; opacity:.85; margin-top:4px; }
+  .btn:active { transform: scale(.98); }
+  .b1 { background:#3b82f6; } .b2 { background:#0ea5a4; } .b3 { background:#f59e0b; } .b4 { background:#6366f1; }
+  .b5 { background:#dc2626; grid-column: span 2; }
+  .btn .fill { position:absolute; left:0; bottom:0; height:100%; width:0; background:rgba(255,255,255,.35); }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 12px 0; }
+  .switch { display:flex; align-items:center; gap:8px; font-weight:600; }
+  input[type=range] { width: 140px; }
+  .log { font-family: ui-monospace, monospace; font-size: 12px; height: 280px; overflow:auto; background:#0f1420; color:#cfe3ff; border-radius: 12px; padding: 10px; }
+  .log div { margin-bottom: 4px; white-space: pre-wrap; }
+  .pill { display:inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight:600; }
+  .on { background:#dcfce7; color:#166534; } .off { background:#fee2e2; color:#991b1b; }
+</style>
+</head>
+<body>
+<main>
+  <section class="card device">
+    <div style="align-self:stretch">
+      <h1>ปุ่มจำลอง CarePing</h1>
+      <div class="muted">ทำงานเหมือนปุ่ม IoT จริง: ส่ง MQTT, heartbeat และรับสถานะ LED จากเซิร์ฟเวอร์</div>
+    </div>
+    <div class="led" id="led"></div>
+    <div class="ledlabel" id="ledLabel">กำลังเชื่อมต่อ…</div>
+    <div class="buttons" id="buttons"></div>
+    <div class="muted">ปุ่มฉุกเฉินต้องกดค้าง 2 วินาที</div>
+  </section>
+
+  <aside class="card">
+    <div class="row"><span>อุปกรณ์</span><b id="deviceId">-</b></div>
+    <div class="row"><span>การเชื่อมต่อ</span><span id="conn" class="pill off">ออฟไลน์</span></div>
+    <div class="row">
+      <label class="switch"><input type="checkbox" id="cut" /> ตัดสัญญาณ</label>
+      <span class="muted" id="queued"></span>
+    </div>
+    <div class="row"><span>แบต <b id="batV">80</b>%</span><input type="range" id="bat" min="0" max="100" value="80" /></div>
+    <div class="row"><span>สัญญาณ <b id="rssiV">-60</b> dBm</span><input type="range" id="rssi" min="-95" max="-30" value="-60" /></div>
+    <div class="muted" id="hbInfo"></div>
+    <h3 style="font-size:14px;margin:18px 0 8px">Log</h3>
+    <div class="log" id="log"></div>
+  </aside>
+</main>
+
+<script src="/vendor/mqtt.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const LED = {
+  idle: { color: '#cfd3db', blink: false, label: 'พร้อมใช้งาน' },
+  waiting: { color: '#facc15', blink: true, label: 'ส่งแล้ว รอคนรับ' },
+  acked: { color: '#22c55e', blink: false, label: 'มีคนรับทราบแล้ว กำลังมา' },
+  no_response: { color: '#ef4444', blink: true, label: 'ส่งครบแล้ว ยังไม่มีใครรับ' },
+  nobody_home: { color: '#a855f7', blink: true, label: 'ไม่มีใครอยู่บ้าน (กดฉุกเฉินถ้าจำเป็น)' },
+  offline: { color: '#b91c1c', blink: false, label: 'ไม่มีสัญญาณ' },
+};
+const QKEY = 'careping-sim-queue';
+let cfg, client, hbTimer, lastLed = 'idle';
+
+function log(msg) {
+  const d = document.createElement('div');
+  d.textContent = `${new Date().toLocaleTimeString('th-TH')}  ${msg}`;
+  $('log').prepend(d);
+}
+function setLed(state) {
+  const s = LED[state] ?? LED.idle;
+  $('led').style.background = s.color;
+  $('led').classList.toggle('blink', s.blink);
+  $('ledLabel').textContent = s.label;
+}
+function setConn(on) {
+  $('conn').textContent = on ? 'ออนไลน์' : 'ออฟไลน์';
+  $('conn').className = 'pill ' + (on ? 'on' : 'off');
+  if (!on) setLed('offline');
+}
+const queue = () => JSON.parse(localStorage.getItem(QKEY) || '[]');
+const saveQueue = (q) => { localStorage.setItem(QKEY, JSON.stringify(q)); $('queued').textContent = q.length ? `ค้างส่ง ${q.length}` : ''; };
+
+function beep() {
+  try {
+    const ctx = new AudioContext(); const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(ctx.destination); g.gain.value = 0.2;
+    o.start(); setTimeout(() => { o.stop(); ctx.close(); }, 600);
+  } catch {}
+}
+
+function press(button) {
+  const msg = { eventId: crypto.randomUUID(), button, ts: Date.now() };
+  const label = cfg.buttons.find((b) => b.button === button)?.label ?? button;
+  if (client?.connected) {
+    client.publish(`careping/dev/${cfg.deviceId}/press`, JSON.stringify(msg), { qos: 1 });
+    log(`กด "${label}"`);
+  } else {
+    saveQueue([...queue(), { ...msg, queuedOffline: true }]);
+    beep(); // ไม่มีสัญญาณ: buzzer ดังเรียกคนใกล้ ๆ
+    log(`กด "${label}" ตอนออฟไลน์ → buzzer ดัง + เก็บไว้ส่งทีหลัง`);
+  }
+}
+
+function heartbeat() {
+  if (!client?.connected) return;
+  client.publish(`careping/dev/${cfg.deviceId}/heartbeat`,
+    JSON.stringify({ battery: +$('bat').value, rssi: +$('rssi').value, fw: 'sim-0.1', ts: Date.now() }), { qos: 0 });
+}
+
+function connect() {
+  const url = `ws://${location.hostname}:${cfg.mqttWsPort}`;
+  client = mqtt.connect(url, {
+    clientId: `${cfg.deviceId}-${Math.random().toString(16).slice(2, 8)}`,
+    reconnectPeriod: 3000,
+    will: { topic: `careping/dev/${cfg.deviceId}/status`, payload: 'offline', qos: 1, retain: true },
+  });
+  client.on('connect', () => {
+    setConn(true); setLed(lastLed);
+    log(`เชื่อมต่อ ${url}`);
+    client.publish(`careping/dev/${cfg.deviceId}/status`, 'online', { qos: 1, retain: true });
+    client.subscribe(`careping/dev/${cfg.deviceId}/led`, { qos: 1 });
+    heartbeat();
+    clearInterval(hbTimer);
+    hbTimer = setInterval(heartbeat, cfg.heartbeatIntervalSec * 1000);
+    const q = queue();
+    if (q.length) {
+      q.forEach((m) => client.publish(`careping/dev/${cfg.deviceId}/press`, JSON.stringify(m), { qos: 1 }));
+      log(`ส่ง event ที่ค้างไว้ ${q.length} รายการ`);
+      saveQueue([]);
+    }
+  });
+  client.on('message', (_t, payload) => {
+    try {
+      const { state } = JSON.parse(payload.toString());
+      lastLed = state; setLed(state);
+      log(`LED → ${LED[state]?.label ?? state}`);
+    } catch {}
+  });
+  client.on('close', () => { clearInterval(hbTimer); setConn(false); });
+  client.on('error', (e) => log(`ผิดพลาด: ${e.message}`));
+}
+
+function buildButtons() {
+  const box = $('buttons');
+  for (const b of cfg.buttons) {
+    const el = document.createElement('button');
+    el.className = `btn b${b.button}`;
+    el.innerHTML = `<span class="fill"></span>${b.label}<small>ระดับ${{ normal: 'ปกติ', high: 'สูง', urgent: 'ด่วน' }[b.urgency]}</small>`;
+    if (b.urgency === 'urgent') {
+      let timer, start, raf;
+      const fill = el.querySelector('.fill');
+      const reset = () => { clearTimeout(timer); cancelAnimationFrame(raf); fill.style.width = '0'; };
+      const anim = () => { fill.style.width = Math.min(100, (Date.now() - start) / 20) + '%'; raf = requestAnimationFrame(anim); };
+      el.addEventListener('pointerdown', () => { start = Date.now(); anim(); timer = setTimeout(() => { reset(); press(b.button); }, 2000); });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => el.addEventListener(ev, reset));
+    } else {
+      el.addEventListener('click', () => press(b.button));
+    }
+    box.appendChild(el);
+  }
+}
+
+$('cut').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    client.end(true); // ตัดแบบไม่บอกลา → broker ส่ง Last Will
+    log('ตัดสัญญาณ: หยุดส่ง heartbeat');
+  } else {
+    connect();
+  }
+});
+$('bat').addEventListener('input', (e) => ($('batV').textContent = e.target.value));
+$('rssi').addEventListener('input', (e) => ($('rssiV').textContent = e.target.value));
+
+(async () => {
+  cfg = await (await fetch('/api/sim-config')).json();
+  $('deviceId').textContent = cfg.deviceId;
+  $('hbInfo').textContent = `heartbeat ทุก ${cfg.heartbeatIntervalSec} วินาที`;
+  buildButtons();
+  saveQueue(queue());
+  setConn(false);
+  connect();
+})();
+</script>
+</body>
+</html>

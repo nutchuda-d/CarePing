@@ -1,0 +1,29 @@
+{
+  "name": "@careping/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "fast": "tsx src/index.ts --fast",
+    "reset-db": "tsx src/reset.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@careping/shared": "*",
+    "@electric-sql/pglite": "^0.5.15",
+    "@fastify/static": "^10.1.10",
+    "@fastify/websocket": "^11.3.7",
+    "aedes": "^1.2.0",
+    "aedes-server-factory": "^0.2.1",
+    "fastify": "^5.12.8",
+    "mqtt": "^5.16.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3"
+  }
+}
