@@ -147,4 +147,130 @@ export type ServerEvent =
   | { type: 'alert'; case: CaseDto; reason: 'escalation' | 'broadcast' | 'urgent' | 'repeat_press' | 'late_info' }
   | { type: 'case_updated'; case: CaseDto }
   | { type: 'device'; device: DeviceDto; reason: 'offline' | 'online' | 'offline_reminder' | 'low_battery' }
-  | { type: 'state_changed' };
+  | { type: 'state_changed' }
+  | { type: 'diary_changed'; date: string }
+  | { type: 'meds_changed'; date: string };
+
+// ---------- บันทึกประจำวัน ----------
+
+export type MoodLevel = 1 | 2 | 3 | 4 | 5;
+
+export const MOODS: { level: MoodLevel; label: string; color: string }[] = [
+  { level: 5, label: 'ดีมาก', color: '#FFD66B' },
+  { level: 4, label: 'ดี', color: '#8EE3B0' },
+  { level: 3, label: 'เฉย ๆ', color: '#C8C1FF' },
+  { level: 2, label: 'ไม่ค่อยดี', color: '#FFC09A' },
+  { level: 1, label: 'แย่', color: '#9DB8E0' },
+];
+
+export const TAG_COLORS = ['#2563EB', '#16A34A', '#D97706', '#DC2626', '#9333EA', '#6B7385'];
+
+export interface TagDto {
+  id: string;
+  label: string;
+  color: string;
+}
+
+export type EventType = 'doctor' | 'medication' | 'therapy' | 'other';
+
+export const EVENT_TYPE_LABEL: Record<EventType, string> = {
+  doctor: 'นัดหมอ',
+  medication: 'เปลี่ยนยา',
+  therapy: 'กายภาพ',
+  other: 'อื่น ๆ',
+};
+
+export interface EventDto {
+  id: string;
+  date: string; // YYYY-MM-DD
+  time: string | null; // HH:MM
+  title: string;
+  type: EventType;
+  detail: string | null;
+  createdByName: string;
+}
+
+export interface DiaryMonthDto {
+  month: string; // YYYY-MM
+  today: string;
+  days: { date: string; mood: MoodLevel | null; tagIds: string[] }[];
+  events: EventDto[];
+  tags: TagDto[];
+}
+
+export interface DiaryLogDto {
+  userName: string;
+  text: string;
+  at: number;
+}
+
+export interface DiaryDayDto {
+  date: string;
+  mood: MoodLevel | null;
+  tagIds: string[];
+  /** โน้ตส่วนตัวของผู้ใช้ที่เรียกเท่านั้น */
+  note: string | null;
+  log: DiaryLogDto[];
+  doses: { given: number; total: number };
+  events: EventDto[];
+}
+
+// ---------- ยา ----------
+
+export interface DoseDto {
+  medicationId: string;
+  name: string;
+  dose: string;
+  instructions: string | null;
+  time: string; // HH:MM
+  givenBy: string | null;
+  givenByName: string | null;
+  givenAt: number | null;
+}
+
+export interface MedsTodayDto {
+  date: string;
+  now: string; // HH:MM เวลาท้องถิ่นของผู้ป่วย
+  doses: DoseDto[];
+}
+
+// ---------- รายงาน ----------
+
+export interface ReportTodayDto {
+  date: string;
+  total: number;
+  typicalLow: number;
+  typicalHigh: number;
+  presses: { id: string; at: number; minuteOfDay: number; button: ButtonNumber; label: string; note: string | null }[];
+}
+
+export interface ReportWeekDto {
+  from: string;
+  to: string;
+  total: number;
+  prevTotal: number;
+  nightCount: number;
+  days: { date: string; counts: Record<number, number> }[];
+  byButton: Record<number, number>;
+  prevByButton: Record<number, number>;
+}
+
+export interface RangeSummaryDto {
+  from: string;
+  to: string;
+  days: number;
+  total: number;
+  perDay: number;
+  night: number;
+  byButton: Record<number, number>;
+  events: EventDto[];
+}
+
+export type ComparePreset = 'month' | 'doctor' | 'custom';
+
+export interface ReportCompareDto {
+  preset: ComparePreset;
+  note: string;
+  a: RangeSummaryDto;
+  b: RangeSummaryDto;
+}

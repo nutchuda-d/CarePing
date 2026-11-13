@@ -1,3 +1,4 @@
+import { existsSync, renameSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { DEFAULT_BUTTONS, DEFAULT_SETTINGS } from '@careping/shared';
 
@@ -87,6 +88,73 @@ CREATE TABLE IF NOT EXISTS notification_attempt (
   round INT NOT NULL DEFAULT 0,
   sent_at DOUBLE PRECISION NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tag (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL REFERENCES patient(id),
+  label TEXT NOT NULL,
+  color TEXT NOT NULL,
+  created_by TEXT REFERENCES app_user(id),
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE TABLE IF NOT EXISTS daily_log (
+  patient_id TEXT NOT NULL REFERENCES patient(id),
+  date TEXT NOT NULL,
+  mood INT CHECK (mood BETWEEN 1 AND 5),
+  updated_by TEXT REFERENCES app_user(id),
+  updated_at DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (patient_id, date)
+);
+CREATE TABLE IF NOT EXISTS daily_log_tag (
+  patient_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  tag_id TEXT NOT NULL REFERENCES tag(id),
+  PRIMARY KEY (patient_id, date, tag_id)
+);
+CREATE TABLE IF NOT EXISTS private_note (
+  patient_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  author_id TEXT NOT NULL REFERENCES app_user(id),
+  text TEXT NOT NULL,
+  updated_at DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (patient_id, date, author_id)
+);
+CREATE TABLE IF NOT EXISTS diary_audit (
+  id SERIAL PRIMARY KEY,
+  patient_id TEXT NOT NULL,
+  date TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES app_user(id),
+  text TEXT NOT NULL,
+  at DOUBLE PRECISION NOT NULL
+);
+CREATE TABLE IF NOT EXISTS care_event (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL REFERENCES patient(id),
+  date TEXT NOT NULL,
+  time TEXT,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('doctor','medication','therapy','other')),
+  detail TEXT,
+  created_by TEXT REFERENCES app_user(id),
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS care_event_date ON care_event (patient_id, date);
+CREATE TABLE IF NOT EXISTS medication (
+  id TEXT PRIMARY KEY,
+  patient_id TEXT NOT NULL REFERENCES patient(id),
+  name TEXT NOT NULL,
+  dose TEXT NOT NULL,
+  instructions TEXT,
+  times TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE TABLE IF NOT EXISTS dose_log (
+  medication_id TEXT NOT NULL REFERENCES medication(id),
+  date TEXT NOT NULL,
+  time TEXT NOT NULL,
+  given_by TEXT NOT NULL REFERENCES app_user(id),
+  given_at DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (medication_id, date, time)
+);
 CREATE TABLE IF NOT EXISTS device_status_log (
   id SERIAL PRIMARY KEY,
   device_id TEXT NOT NULL,
@@ -96,10 +164,22 @@ CREATE TABLE IF NOT EXISTS device_status_log (
 );
 `;
 
-export async function openDb(dataDir?: string): Promise<Db> {
-  const db = dataDir ? await PGlite.create(dataDir) : await PGlite.create();
+export async function openDb(dataDir?: string, log: (m: string) => void = console.warn): Promise<Db> {
+  let db: PGlite;
+  try {
+    db = dataDir ? await PGlite.create(dataDir) : await PGlite.create();
+  } catch (e) {
+    // ฐานข้อมูลเสีย (เช่น ปิดโปรแกรมกลางคัน หรือเปิด backend ซ้อนกันสองตัว)
+    // ย้ายของเดิมไปเก็บไว้ แล้วเริ่มฐานข้อมูลใหม่ เพื่อให้ช่วงพัฒนาใช้งานต่อได้ทันที
+    if (!dataDir || !existsSync(dataDir)) throw e;
+    const backup = `${dataDir}-broken-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    renameSync(dataDir, backup);
+    log(`[db] เปิดฐานข้อมูลไม่ได้ (${String(e).slice(0, 80)}) ย้ายของเดิมไปที่ ${backup} แล้วเริ่มใหม่`);
+    db = await PGlite.create(dataDir);
+  }
   await db.exec(SCHEMA);
   await seedIfEmpty(db);
+  await seedDiary(db);
   return db;
 }
 
@@ -128,4 +208,26 @@ async function seedIfEmpty(db: Db) {
     }
     await tx.query('INSERT INTO settings VALUES ($1, $2)', ['pat-1', JSON.stringify(DEFAULT_SETTINGS)]);
   });
+}
+
+/** ข้อมูลตั้งต้นของแท็กและยา (เพิ่มให้ฐานข้อมูลเดิมที่ยังไม่มีด้วย) */
+async function seedDiary(db: Db) {
+  const tags = await db.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM tag');
+  if (tags.rows[0].n === 0) {
+    const defaults: [string, string][] = [['ร่าเริง', '#16A34A'], ['กินได้น้อย', '#D97706'], ['นอนไม่หลับ', '#2563EB'], ['ง่วงทั้งวัน', '#6B7385'], ['ปวดหลัง', '#DC2626']];
+    for (const [i, [label, color]] of defaults.entries()) {
+      await db.query('INSERT INTO tag VALUES ($1, $2, $3, $4, NULL, $5)', [`tag-${i + 1}`, 'pat-1', label, color, Date.now()]);
+    }
+  }
+  const meds = await db.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM medication');
+  if (meds.rows[0].n === 0) {
+    const defaults: [string, string, string, string][] = [
+      ['ยาความดัน', 'Amlodipine 5 mg · 1 เม็ด', 'หลังอาหาร', '08:00'],
+      ['ยาเบาหวาน', 'Metformin 500 mg · 1 เม็ด', 'หลังอาหาร', '08:00,18:00'],
+      ['วิตามินบีรวม', '1 เม็ด', 'หลังอาหาร', '12:00'],
+    ];
+    for (const [i, [name, dose, ins, times]] of defaults.entries()) {
+      await db.query('INSERT INTO medication (id, patient_id, name, dose, instructions, times) VALUES ($1, $2, $3, $4, $5, $6)', [`med-${i + 1}`, 'pat-1', name, dose, ins, times]);
+    }
+  }
 }

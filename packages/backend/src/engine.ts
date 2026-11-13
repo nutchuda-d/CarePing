@@ -131,6 +131,10 @@ export class Engine {
     return rows;
   }
 
+  async memberIds(patientId: string): Promise<string[]> {
+    return (await this.members(patientId)).map((m) => m.user_id);
+  }
+
   async patientOfUser(userId: string): Promise<string> {
     const { rows } = await this.db.query<{ patient_id: string }>(
       'SELECT patient_id FROM care_team_member WHERE user_id = $1 LIMIT 1',

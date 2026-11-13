@@ -8,8 +8,10 @@ export async function startBroker(opts: { tcpPort: number; wsPort: number; log: 
   const broker = await Aedes.createBroker();
   const tcp = createTcp(broker.handle);
   const ws = createFactoryServer(broker, { ws: true });
-  await new Promise<void>((r) => tcp.listen(opts.tcpPort, r));
-  await new Promise<void>((r) => ws.listen(opts.wsPort, r));
+  const listen = (srv: { listen: (p: number, cb: () => void) => unknown; once: (ev: string, cb: (e: Error) => void) => unknown }, port: number) =>
+    new Promise<void>((resolve, reject) => { srv.once('error', reject); srv.listen(port, resolve); });
+  await listen(tcp, opts.tcpPort);
+  await listen(ws as never, opts.wsPort);
   opts.log(`[mqtt] broker: tcp ${opts.tcpPort}, websocket ${opts.wsPort}`);
 
   const publishLed = (deviceId: string, state: LedState, caseId?: string) => {

@@ -6,10 +6,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ServerEvent } from '@careping/shared';
 import { Api, defaultServerUrl, useLiveState } from './src/api';
 import { AlertOverlay } from './src/components/AlertOverlay';
-import { HistoryScreen } from './src/screens/HistoryScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
-import { StatsScreen } from './src/screens/StatsScreen';
+import { DiaryScreen } from './src/diary/DiaryScreen';
+import { ReportScreen } from './src/report/ReportScreen';
 import { colors } from './src/theme';
 
 const SESSION_KEY = 'careping.session';
@@ -51,7 +51,7 @@ export default function App() {
   );
 }
 
-type Tab = 'home' | 'history' | 'stats';
+type Tab = 'home' | 'diary' | 'report';
 type AlertEvent = Extract<ServerEvent, { type: 'alert' | 'device' }>;
 
 function Main({ session, onLogout }: { session: Session; onLogout: () => void }) {
@@ -82,17 +82,17 @@ function Main({ session, onLogout }: { session: Session; onLogout: () => void })
       </View>
 
       <View style={{ flex: 1 }}>
-        {tab === 'home' ? <HomeScreen api={api} state={state} connected={connected} error={error} refresh={refresh} /> : null}
-        {tab === 'history' ? <HistoryScreen api={api} version={version} /> : null}
-        {tab === 'stats' ? <StatsScreen api={api} buttons={state?.buttons ?? []} version={version} /> : null}
+        {tab === 'home' ? <HomeScreen api={api} state={state} connected={connected} error={error} refresh={refresh} version={version} /> : null}
+        {tab === 'diary' ? <DiaryScreen api={api} version={version} /> : null}
+        {tab === 'report' ? <ReportScreen api={api} buttons={state?.buttons ?? []} version={version} patientName={state?.patient.name ?? 'ผู้ป่วย'} /> : null}
       </View>
 
       <View style={styles.tabbar}>
         {(
           [
             ['home', 'หน้าหลัก'],
-            ['history', 'ประวัติ'],
-            ['stats', 'สถิติ'],
+            ['diary', 'บันทึก'],
+            ['report', 'รายงาน'],
           ] as [Tab, string][]
         ).map(([key, label]) => (
           <Pressable key={key} style={styles.tabItem} onPress={() => setTab(key)}>

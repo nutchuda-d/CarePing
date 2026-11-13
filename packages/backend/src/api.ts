@@ -3,7 +3,9 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
-import type { Urgency } from '@careping/shared';
+import type { ComparePreset, EventType, Urgency } from '@careping/shared';
+import type { Diary } from './diary.ts';
+import type { Reports } from './reports.ts';
 import type { Db } from './db.ts';
 import { Engine, HttpError } from './engine.ts';
 import type { Notifier } from './notifier.ts';
@@ -16,12 +18,14 @@ export async function buildApi(deps: {
   db: Db;
   engine: Engine;
   notifier: Notifier;
+  diary: Diary;
+  reports: Reports;
   simulatorDir: string;
   simConfig: () => Promise<object>;
   tzOffsetMin: number;
   logger?: boolean;
 }) {
-  const { db, engine, notifier } = deps;
+  const { db, engine, notifier, diary, reports } = deps;
   const app = Fastify({ logger: deps.logger ?? false });
   await app.register(fastifyWebsocket);
 
@@ -96,6 +100,39 @@ export async function buildApi(deps: {
       [token, userId],
     );
     return { ok: true };
+  });
+
+  // ---------- บันทึกประจำวัน ----------
+  type Q = { userId?: string; month?: string; date?: string };
+  app.get<{ Querystring: Q }>('/api/diary/month', async (req) => diary.month(need(req.query.userId, 'userId'), req.query.month));
+  app.get<{ Querystring: Q }>('/api/diary/day', async (req) => diary.day(need(req.query.userId, 'userId'), need(req.query.date, 'date')));
+  app.put<{ Body: { userId?: string; date?: string; mood?: number | null; tagIds?: string[]; note?: string | null } }>('/api/diary/day', async (req) =>
+    diary.saveDay(need(req.body?.userId, 'userId'), need(req.body?.date, 'date'), { mood: req.body?.mood, tagIds: req.body?.tagIds, note: req.body?.note }),
+  );
+  app.post<{ Body: { userId?: string; label?: string; color?: string } }>('/api/tags', async (req) =>
+    diary.createTag(need(req.body?.userId, 'userId'), req.body?.label ?? '', req.body?.color ?? ''),
+  );
+  app.post<{ Body: { userId?: string; date?: string; time?: string | null; title?: string; type?: EventType; detail?: string | null } }>('/api/events', async (req) =>
+    diary.createEvent(need(req.body?.userId, 'userId'), req.body ?? {}),
+  );
+  app.delete<{ Params: { id: string }; Querystring: Q }>('/api/events/:id', async (req) => {
+    await diary.deleteEvent(need(req.query.userId, 'userId'), req.params.id);
+    return { ok: true };
+  });
+
+  // ---------- ยา ----------
+  app.get<{ Querystring: Q }>('/api/meds/today', async (req) => diary.medsToday(need(req.query.userId, 'userId')));
+  app.post<{ Body: { userId?: string; medicationId?: string; time?: string; given?: boolean } }>('/api/meds/dose', async (req) =>
+    diary.setDose(need(req.body?.userId, 'userId'), need(req.body?.medicationId, 'medicationId'), need(req.body?.time, 'time'), req.body?.given !== false),
+  );
+
+  // ---------- รายงาน ----------
+  app.get<{ Querystring: Q }>('/api/report/today', async (req) => reports.todayReport(need(req.query.userId, 'userId')));
+  app.get<{ Querystring: Q }>('/api/report/week', async (req) => reports.weekReport(need(req.query.userId, 'userId')));
+  app.get<{ Querystring: Q & { preset?: ComparePreset; aFrom?: string; aTo?: string; bFrom?: string; bTo?: string } }>('/api/report/compare', async (req) => {
+    const { preset = 'month', aFrom, aTo, bFrom, bTo } = req.query;
+    if (!['month', 'doctor', 'custom'].includes(preset)) throw new HttpError(400, 'preset ไม่ถูกต้อง');
+    return reports.compare(need(req.query.userId, 'userId'), preset, { aFrom, aTo, bFrom, bTo });
   });
 
   // แอปเชื่อมค้างไว้เพื่อรับการแจ้งเตือนแบบทันที

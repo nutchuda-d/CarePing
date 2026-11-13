@@ -5,19 +5,33 @@ import { Engine } from './engine.ts';
 import { startBroker } from './mqtt.ts';
 import { Notifier } from './notifier.ts';
 import { buildApi } from './api.ts';
+import { Diary } from './diary.ts';
+import { Reports } from './reports.ts';
 
 const log = (m: string) => console.log(`${new Date().toLocaleTimeString('th-TH')} ${m}`);
 
-const db = await openDb(config.dataDir);
+// เปิดพอร์ต MQTT ก่อนแตะฐานข้อมูล: ถ้ามี backend อีกตัวเปิดค้างอยู่ จะหยุดตรงนี้
+// แทนที่จะเปิดฐานข้อมูลซ้อนกันจนไฟล์เสีย
+const broker = await startBroker({ tcpPort: config.mqttPort, wsPort: config.mqttWsPort, log }).catch((e) => {
+  if (e?.code === 'EADDRINUSE') {
+    console.error(`พอร์ต ${e.port} ถูกใช้อยู่ — น่าจะมี backend อีกหน้าต่างเปิดค้างอยู่ ให้ปิดตัวนั้นก่อน (Ctrl+C)`);
+    process.exit(1);
+  }
+  throw e;
+});
+const db = await openDb(config.dataDir, log);
 const notifier = new Notifier(db, { expoPush: config.expoPush, log });
-const broker = await startBroker({ tcpPort: config.mqttPort, wsPort: config.mqttWsPort, log });
 const engine = new Engine({ db, notifier, publishLed: broker.publishLed, timeScale: config.timeScale, log });
 broker.attach(engine);
+const diary = new Diary({ db, engine, notifier, tzOffsetMin: config.tzOffsetMin });
+const reports = new Reports({ db, engine, diary, tzOffsetMin: config.tzOffsetMin });
 
 const app = await buildApi({
   db,
   engine,
   notifier,
+  diary,
+  reports,
   simulatorDir: config.simulatorDir,
   tzOffsetMin: config.tzOffsetMin,
   simConfig: async () => {

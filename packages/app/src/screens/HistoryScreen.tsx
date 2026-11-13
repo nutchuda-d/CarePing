@@ -5,7 +5,7 @@ import type { Api } from '../api';
 import { clock, colors, statusColor, statusLabel, urgencyColor } from '../theme';
 import { Badge } from '../components/ui';
 
-export function HistoryScreen({ api, version }: { api: Api; version: number }) {
+export function HistoryScreen({ api, version, header }: { api: Api; version: number; header?: React.ReactNode }) {
   const [items, setItems] = useState<CaseDto[]>([]);
   const [loading, setLoading] = useState(false);
   const load = useCallback(async () => {
@@ -26,7 +26,12 @@ export function HistoryScreen({ api, version }: { api: Api; version: number }) {
       keyExtractor={(c) => c.id}
       contentContainerStyle={{ padding: 16 }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
-      ListHeaderComponent={<Text style={styles.h}>ประวัติ 30 วัน</Text>}
+      ListHeaderComponent={
+        <View>
+          {header}
+          <Text style={[styles.h, header ? { fontSize: 15, fontWeight: '700', marginTop: 16, marginBottom: 8 } : null]}>ประวัติการเรียก 30 วัน</Text>
+        </View>
+      }
       ListEmptyComponent={<Text style={styles.meta}>ยังไม่มีประวัติ</Text>}
       renderItem={({ item: c }) => (
         <View style={styles.item}>
