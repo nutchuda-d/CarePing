@@ -1,4 +1,5 @@
-import { existsSync, renameSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { DEFAULT_BUTTONS, DEFAULT_SETTINGS } from '@careping/shared';
 
@@ -166,6 +167,8 @@ CREATE TABLE IF NOT EXISTS device_status_log (
 
 export async function openDb(dataDir?: string, log: (m: string) => void = console.warn): Promise<Db> {
   let db: PGlite;
+  // PGlite สร้างเฉพาะโฟลเดอร์สุดท้าย จึงต้องสร้างโฟลเดอร์แม่ (.data) ให้ก่อน
+  if (dataDir) mkdirSync(dirname(dataDir), { recursive: true });
   try {
     db = dataDir ? await PGlite.create(dataDir) : await PGlite.create();
   } catch (e) {
