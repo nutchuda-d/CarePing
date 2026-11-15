@@ -76,7 +76,7 @@ export class Diary {
   async month(userId: string, month?: string): Promise<DiaryMonthDto> {
     const patientId = await this.deps.engine.patientOfUser(userId);
     const today = this.today();
-    const m = month && /^\d{4}-\d{2}$/.test(month) ? month : today.slice(0, 7);
+    const m = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : today.slice(0, 7);
     const from = `${m}-01`;
     const to = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
     const logs = await this.db.query<{ date: string; mood: MoodLevel | null }>('SELECT date, mood FROM daily_log WHERE patient_id = $1 AND date BETWEEN $2 AND $3', [patientId, from, to]);
