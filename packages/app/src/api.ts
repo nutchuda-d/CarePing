@@ -39,6 +39,18 @@ export class Api {
     return body as T;
   }
 
+  static requestOtp(baseUrl: string, phone: string) {
+    return new Api(baseUrl, '').req<{ phone: string; resendInSec: number; expiresInSec: number; devCode?: string }>('/api/auth/request-otp', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    });
+  }
+  static verifyOtp(baseUrl: string, phone: string, code: string) {
+    return new Api(baseUrl, '').req<{ id: string; name: string; role: string }>('/api/auth/verify', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+    });
+  }
   static users(baseUrl: string) {
     return new Api(baseUrl, '').req<{ id: string; name: string; role: string }[]>('/api/users');
   }

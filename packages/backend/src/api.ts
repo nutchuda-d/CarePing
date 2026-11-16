@@ -4,6 +4,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyWebsocket from '@fastify/websocket';
 import type { ComparePreset, EventType, Urgency } from '@careping/shared';
+import type { Auth } from './auth.ts';
 import type { Diary } from './diary.ts';
 import type { Reports } from './reports.ts';
 import type { Db } from './db.ts';
@@ -18,6 +19,7 @@ export async function buildApi(deps: {
   db: Db;
   engine: Engine;
   notifier: Notifier;
+  auth: Auth;
   diary: Diary;
   reports: Reports;
   simulatorDir: string;
@@ -49,6 +51,10 @@ export async function buildApi(deps: {
 
   app.get('/api/health', async () => ({ ok: true }));
   app.get('/api/sim-config', async () => deps.simConfig());
+
+  // ---------- ล็อกอินด้วยเบอร์โทร + OTP ----------
+  app.post<{ Body: { phone?: string } }>('/api/auth/request-otp', async (req) => deps.auth.requestOtp(req.body?.phone));
+  app.post<{ Body: { phone?: string; code?: string } }>('/api/auth/verify', async (req) => deps.auth.verify(req.body?.phone, req.body?.code));
 
   app.get('/api/users', async () => {
     const { rows } = await db.query(

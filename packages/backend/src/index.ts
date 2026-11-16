@@ -5,6 +5,7 @@ import { Engine } from './engine.ts';
 import { startBroker } from './mqtt.ts';
 import { Notifier } from './notifier.ts';
 import { buildApi } from './api.ts';
+import { Auth } from './auth.ts';
 import { Diary } from './diary.ts';
 import { Reports } from './reports.ts';
 
@@ -23,6 +24,8 @@ const db = await openDb(config.dataDir, log);
 const notifier = new Notifier(db, { expoPush: config.expoPush, log });
 const engine = new Engine({ db, notifier, publishLed: broker.publishLed, timeScale: config.timeScale, log });
 broker.attach(engine);
+// devEcho: ยังไม่ได้ต่อ SMS จริง จึงส่งรหัสกลับให้แอปแสดงตอนพัฒนา
+const auth = new Auth({ db, log, devEcho: true });
 const diary = new Diary({ db, engine, notifier, tzOffsetMin: config.tzOffsetMin });
 const reports = new Reports({ db, engine, diary, tzOffsetMin: config.tzOffsetMin });
 
@@ -30,6 +33,7 @@ const app = await buildApi({
   db,
   engine,
   notifier,
+  auth,
   diary,
   reports,
   simulatorDir: config.simulatorDir,

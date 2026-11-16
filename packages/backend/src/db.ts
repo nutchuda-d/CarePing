@@ -182,8 +182,21 @@ export async function openDb(dataDir?: string, log: (m: string) => void = consol
   }
   await db.exec(SCHEMA);
   await seedIfEmpty(db);
+  await migratePhone(db);
   await seedDiary(db);
   return db;
+}
+
+/** เบอร์โทรสำหรับล็อกอินด้วย OTP (เพิ่มให้ฐานข้อมูลเดิมด้วย) */
+async function migratePhone(db: Db) {
+  await db.exec(`ALTER TABLE app_user ADD COLUMN IF NOT EXISTS phone TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS app_user_phone ON app_user(phone);`);
+  const seed: [string, string][] = [
+    ['u-1', '0812345678'],
+    ['u-2', '0822345678'],
+    ['u-3', '0832345678'],
+  ];
+  for (const [id, phone] of seed) await db.query('UPDATE app_user SET phone = $2 WHERE id = $1 AND phone IS NULL', [id, phone]);
 }
 
 /** ข้อมูลตั้งต้นสำหรับพัฒนา: บ้าน 1 หลัง ผู้ป่วย 1 คน ผู้ดูแล 3 คน ปุ่ม 1 ตัว */
@@ -199,7 +212,7 @@ async function seedIfEmpty(db: Db) {
       ['u-3', 'หลาน', 'caregiver'],
     ];
     for (const [i, [id, name, role]] of users.entries()) {
-      await tx.query('INSERT INTO app_user VALUES ($1, $2)', [id, name]);
+      await tx.query('INSERT INTO app_user (id, name) VALUES ($1, $2)', [id, name]);
       await tx.query(
         'INSERT INTO care_team_member (patient_id, user_id, role, priority) VALUES ($1, $2, $3, $4)',
         ['pat-1', id, role, i + 1],
