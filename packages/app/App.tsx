@@ -54,6 +54,8 @@ export default function App() {
 type Tab = 'home' | 'diary' | 'report';
 type AlertEvent = Extract<ServerEvent, { type: 'alert' | 'device' }>;
 
+const isUrgent = (e: AlertEvent | null) => e?.type === 'alert' && e.case.urgency === 'urgent' && e.reason !== 'late_info';
+
 function Main({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const api = useMemo(() => new Api(session.url, session.userId), [session]);
   const [tab, setTab] = useState<Tab>('home');
@@ -66,7 +68,12 @@ function Main({ session, onLogout }: { session: Session; onLogout: () => void })
       // ฉุกเฉินสั่นยาวกว่า (เสียงจริงจะมาจาก push notification ในเวอร์ชันถัดไป)
       const urgent = e.type === 'alert' && e.case.urgency === 'urgent';
       Vibration.vibrate(urgent ? [0, 800, 300, 800, 300, 800] : [0, 400, 200, 400]);
-      setAlert(e);
+      // เรื่องฉุกเฉินที่ยังค้างบนจอ ต้องไม่ถูกแจ้งเตือนที่เบากว่าทับ (เคสอื่นยังเห็นได้ในหน้าหลัก)
+      setAlert((cur) => (isUrgent(cur) && !isUrgent(e) ? cur : e));
+    } else if (e.type === 'case_updated' && (e.case.status === 'acknowledged' || e.case.status === 'resolved')) {
+      // มีคนรับทราบ/ปิดเคสนี้แล้ว ไม่ต้องค้างหน้าจอแจ้งเตือนไว้
+      const updated = e.case;
+      setAlert((cur) => (cur?.type === 'alert' && cur.case.id === updated.id ? null : cur));
     }
     versionRef.current += 1;
     setVersion(versionRef.current);

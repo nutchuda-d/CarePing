@@ -49,6 +49,11 @@ export async function buildApi(deps: {
     return v;
   };
 
+  const clampInt = (v: unknown, def: number, min: number, max: number) => {
+    const n = Math.floor(Number(v ?? def));
+    return Number.isFinite(n) ? Math.max(min, Math.min(n, max)) : def;
+  };
+
   app.get('/api/health', async () => ({ ok: true }));
   app.get('/api/sim-config', async () => deps.simConfig());
 
@@ -66,12 +71,12 @@ export async function buildApi(deps: {
   app.get<{ Querystring: { userId?: string } }>('/api/state', async (req) => engine.state(need(req.query.userId, 'userId')));
 
   app.get<{ Querystring: { userId?: string; days?: string } }>('/api/cases', async (req) =>
-    engine.history(need(req.query.userId, 'userId'), Math.min(Number(req.query.days ?? 30), 365)),
+    engine.history(need(req.query.userId, 'userId'), clampInt(req.query.days, 30, 1, 365)),
   );
 
   app.get<{ Querystring: { userId?: string; days?: string } }>('/api/stats', async (req) => {
     const patientId = await engine.patientOfUser(need(req.query.userId, 'userId'));
-    const days = Math.max(1, Math.min(Number(req.query.days ?? 14), 90));
+    const days = clampInt(req.query.days, 14, 1, 90);
     return computeStats(db, patientId, days, Date.now(), deps.tzOffsetMin);
   });
 

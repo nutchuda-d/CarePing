@@ -29,7 +29,8 @@ export class Notifier {
       this.toSockets(userId, event);
     }
     this.opts.log?.(`[notify] ${event.type} → ${userIds.join(', ')}`);
-    if (this.opts.expoPush) await this.push(userIds, event).catch((e) => this.opts.log?.(`[push] error ${e}`));
+    // ไม่รอ push: ถ้าเน็ตช้า การรับทราบ/ส่งต่อเคสต้องไม่ค้างตาม
+    if (this.opts.expoPush) void this.push(userIds, event).catch((e) => this.opts.log?.(`[push] error ${e}`));
   }
 
   /** อัปเดตหน้าจอเงียบ ๆ ไม่มี push */
@@ -70,6 +71,7 @@ export class Notifier {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(messages),
+      signal: AbortSignal.timeout(10_000),
     });
   }
 }

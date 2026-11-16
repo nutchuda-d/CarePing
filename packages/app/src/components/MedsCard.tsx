@@ -18,6 +18,8 @@ export function MedsCard({ api, version, userId }: { api: Api; version: number; 
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => api.medsToday().then(setData).catch(() => {}), [api]);
   useEffect(() => { load(); }, [load, version]);
+  // โหลดใหม่ทุกนาที ให้ "อีกกี่นาที / เลยเวลาแล้ว" ตรงกับเวลาจริง
+  useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
   if (!data) return null;
   if (data.doses.length === 0) return null;
 

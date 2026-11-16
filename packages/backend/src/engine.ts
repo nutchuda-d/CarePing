@@ -150,24 +150,35 @@ export class Engine {
   }
 
   async toDto(c: CaseRow): Promise<CaseDto> {
-    const { rows } = await this.db.query<{ label: string; acked_name: string | null }>(
-      `SELECT b.label, u.name AS acked_name FROM button_config b
-       LEFT JOIN app_user u ON u.id = $3
-       WHERE b.patient_id = $1 AND b.button = $2`,
-      [c.patient_id, c.button, c.acked_by],
-    );
+    return (await this.toDtos([c]))[0];
+  }
+
+  /** แปลงหลายเคสพร้อมกัน: โหลดชื่อปุ่มและชื่อคนรับครั้งเดียว (ทุกเคสต้องเป็นของผู้ป่วยคนเดียวกัน) */
+  async toDtos(cases: CaseRow[]): Promise<CaseDto[]> {
+    if (cases.length === 0) return [];
+    const labels = new Map((await this.buttons(cases[0].patient_id)).map((b) => [b.button as number, b.label]));
+    const ackers = [...new Set(cases.map((c) => c.acked_by).filter((id): id is string => !!id))];
+    const names = new Map<string, string>();
+    if (ackers.length > 0) {
+      const { rows } = await this.db.query<{ id: string; name: string }>('SELECT id, name FROM app_user WHERE id = ANY($1)', [ackers]);
+      for (const r of rows) names.set(r.id, r.name);
+    }
+    return cases.map((c) => this.buildDto(c, labels.get(c.button), c.acked_by ? names.get(c.acked_by) : undefined));
+  }
+
+  private buildDto(c: CaseRow, label: string | undefined, ackedName: string | undefined): CaseDto {
     return {
       id: c.id,
       patientId: c.patient_id,
       button: c.button as ButtonNumber,
-      buttonLabel: rows[0]?.label ?? `ปุ่ม ${c.button}`,
+      buttonLabel: label ?? `ปุ่ม ${c.button}`,
       urgency: c.urgency,
       status: c.status,
       pressedAt: c.pressed_at,
       pressCount: c.press_count,
       delayed: c.delayed,
       ackedBy: c.acked_by,
-      ackedByName: rows[0]?.acked_name ?? null,
+      ackedByName: ackedName ?? null,
       ackedAt: c.acked_at,
       resolvedAt: c.resolved_at,
       note: c.note,
@@ -194,7 +205,7 @@ export class Engine {
       caregivers: members.map(
         (m): CaregiverDto => ({ id: m.user_id, name: m.name, role: m.role, priority: m.priority, away: m.away }),
       ),
-      openCases: await Promise.all(cases.rows.map((c) => this.toDto(c))),
+      openCases: await this.toDtos(cases.rows),
       buttons: await this.buttons(patientId),
     };
   }
@@ -206,7 +217,7 @@ export class Engine {
       'SELECT * FROM care_case WHERE patient_id = $1 AND pressed_at >= $2 ORDER BY pressed_at DESC LIMIT 500',
       [patientId, since],
     );
-    return Promise.all(rows.map((c) => this.toDto(c)));
+    return this.toDtos(rows);
   }
 
   // ---------- ผู้รับแจ้งเตือน ----------
